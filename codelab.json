@@ -1,0 +1,25 @@
+{
+  "environment": "web",
+  "format": "html",
+  "prefix": "https://storage.googleapis.com",
+  "mainga": "UA-49880327-14",
+  "updated": "2021-06-16T03:06:00Z",
+  "id": "jaws-ug_chiba_proton-handson",
+  "duration": 0,
+  "title": "AWS Proton で ECS Fargate のアプリケーション実行環境を作ってみようハンズオン",
+  "authors": "Masanori Yamaguchi",
+  "summary": "AWS Proton で ECS Fargate 環境を作って、どのようなことができるのか触りながら一緒に勉強しましょう",
+  "source": "1emKGd59WSzpbxfTicUpHHiczrMIBaWtnX31FXo5OSMc",
+  "theme": "aws",
+  "status": [
+    "published"
+  ],
+  "category": [
+    "AWS"
+  ],
+  "tags": [
+    "web"
+  ],
+  "feedback": "https://twitter.com/kinunori",
+  "url": "jaws-ug_chiba_proton-handson"
+}

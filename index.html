@@ -1,0 +1,656 @@
+
+<!doctype html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <meta name="theme-color" content="#4F7DC9">
+  <meta charset="UTF-8">
+  <title>AWS Proton で ECS Fargate のアプリケーション実行環境を作ってみようハンズオン</title>
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
+  <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://storage.googleapis.com/codelab-elements/codelab-elements.css">
+  <style>
+    .success {
+      color: #1e8e3e;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <google-codelab-analytics gaid="UA-49880327-14"></google-codelab-analytics>
+  <google-codelab codelab-gaid=""
+                  id="jaws-ug_chiba_proton-handson"
+                  title="AWS Proton で ECS Fargate のアプリケーション実行環境を作ってみようハンズオン"
+                  environment="web"
+                  feedback-link="https://twitter.com/kinunori">
+    
+      <google-codelab-step label="ハンズオンをはじめる前に" duration="0">
+        <h2 is-upgraded>ハンズオンの前提</h2>
+<ul>
+<li>AWSコンソールを使うブラウザは Chrome を推奨しています</li>
+<li>AdministratorAccessポリシーが追加されたIAMユーザーで作業を行います</li>
+<li>リージョンはProtonが提供されているリージョンとして バージニア北部(us-east-1)、オハイオ(us-east-2)、オレゴン(us-west-2)、東京(ap-northeast-1)、アイルランド(eu-west-1) のいずれかを利用します。</li>
+<li>本手順書では オレゴン(us-west-2) を利用しています。</li>
+<li>ハンズオンで構築した AWS利用料金は 数十円程度 要します。</li>
+<li>VPCが新規に作成されます。VPCは１リージョンに ６つ以上作成できないため、５つ未満のリージョンを使うか、不要はVPCを事前に削除してください。(AWSに上限緩和の申請をしている場合を除く)</li>
+</ul>
+<h2 is-upgraded>ハンズオンの目的</h2>
+<p>Protonは、アプリケーション開発に必要なAWS環境、継続的インテグレーション/継続的デプロイパイプラインを開発者が様々なインタフェース、言語を意識することなくProton上から利用することができることに大きなメリットがあります。<br><br>本ハンズオンは、アプリケーション実行に必要な環境構築に責任をもつインフラエンジニア、アプリケーション開発に責任をもつ開発エンジニアとそれぞれの観点で作業を記載しています。それぞれの作業内容を理解し、Protonを実際に利用する時のイメージを持ってもらうことを目的としています。</p>
+<h2 is-upgraded>構成図</h2>
+<p>Protonから構築される環境は下記図となります。</p>
+<p class="image-container"><img style="width: 601.70px" src="img/3bfcd3c31bcbdab3.png"></p>
+<h3 is-upgraded>AWSサービスの説明</h3>
+<p>Proton</p>
+<ul>
+<li>コンテナおよびサーバーレスアプリケーション向けのマネージドアプリケーションデプロイサービス</li>
+<li>サービス(アプリケーション実行環境)からインフラ環境(VPC、サブネット、ECSなど)をProtonでカバーすることで、開発者とインフラエンジニアの共通言語をProtonに統合することができる</li>
+</ul>
+<p>Cloud9</p>
+<ul>
+<li>ブラウザのみでコードを記述、実行、デバッグできるクラウドベースの統合開発環境 (IDE)</li>
+<li>JavaScript、Python、PHP などの一般的なプログラム言語に不可欠なツールがあらかじめパッケージ化されている</li>
+</ul>
+<p>CodeBuild</p>
+<ul>
+<li>ソースコードをコンパイルし、テストを実行し、デプロイ可能なソフトウェアパッケージを作成できる完全マネージド型のビルドサービス</li>
+<li>ビルドサーバーのプロビジョニング、管理、スケーリングが不要</li>
+</ul>
+<p>CodePipline</p>
+<ul>
+<li>完全マネージド型の継続的デリバリーサービスで、素早く確実性のあるアプリケーションとインフラストラクチャのアップデートのための、パイプラインのリリースを自動化</li>
+<li>定義したリリースモデルに基づき、コードチェンジがあった場合のフェーズの構築、テスト、デプロイを自動化</li>
+</ul>
+<p>ECS Fargate</p>
+<ul>
+<li>コンテナおよびコンテナの動作に関する設計(リソースや環境変数など)を定義することで動作するサーバやクラスタなどホストマシンを意識せずにコンテナを実行できるサービスです</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Protonを利用する下準備" duration="0">
+        <h2 is-upgraded>Cloud9を作成する</h2>
+<p>Protonの構築はAWS CLIを利用して進めていきます。AWS CLIはCloud9上で実行しますので、まずはCloud9を作成していきましょう。</p>
+<ol type="1" start="1">
+<li><strong>マネージメントコンソールのCloud9ページへ移動します。</strong></li>
+</ol>
+<p>※Cloud9のページに移動する前に別タブ等でマネジメントコンソールのウインドウを開いておく事。後述で利用します。<img style="width: 601.70px" src="img/22f9f553d0d61fa8.png"></p>
+<ol type="1" start="2">
+<li><strong>マネージメントコンソールのCloud9ページへ移動します。</strong></li>
+</ol>
+<ol type="1" start="3">
+<li><strong>「Create environment」をクリックします。<br></strong><img style="width: 601.70px" src="img/a6b5e4ef6ab70093.png"></li>
+<li><strong>Name に 名字-年月日(yamaguchi-20210611) など、あとで削除する際にわかりやすい名前を入力し、「Next step」をクリックします。</strong><img style="width: 601.70px" src="img/961564d963607709.png"></li>
+<li><strong>Configure settings 画面はデフォルトのまま 「Next step」をクリックします。<br></strong>※Configure settingsでVPCとサブネットが存在しない場合はCreate new VPCをクリックし、簡易ウィザードでVPCを作成する</li>
+</ol>
+<p class="image-container"><img style="width: 601.70px" src="img/f14e48c7e6fc96ae.png"></p>
+<p>VPCウィザードを起動をクリック</p>
+<p class="image-container"><img style="width: 601.70px" src="img/e7b43157075095ce.png"></p>
+<p>VPC名、アベイラリティーゾーンをus-west-2aを選択し、VPCの作成をクリック</p>
+<p>その後、Cloud9の作成画面にて、更新ボタンをクリックする<br>※IPv4 CIDRブロックは10.0.0./16とする</p>
+<p>※パブリックのサブネットのIPv4 CIDRは10.0.0.0/24とする</p>
+<p class="image-container"><img style="width: 601.70px" src="img/a94c7f702120c420.png"></p>
+<ol type="1" start="6">
+<li><strong>Review 画面が表示されるので 「Create environment」をクリックします。<br></strong></li>
+<li><strong>下記のような画面が表示され、Cloud9のセットアップが実行されます。セットアップが終わるまで３分ほど待ちます。<br></strong><img style="width: 601.70px" src="img/b6a642e2458d7c1c.png"><br></li>
+<li><strong>セットアップが完了すると下記のように、画面下部にコンソールが表示されます。このコンソールを用いてオペレーションしていきます。(矢印で示している境界線をドラッグすることでコンソールの表示領域を広げることができます。おすすめです。)<br></strong><img style="width: 601.70px" src="img/531225f0ead6652d.png"></li>
+</ol>
+<h2 is-upgraded>GitHub を登録する</h2>
+<ol type="1" start="1">
+<li>Github(https://github.com/)にログインする。アカウントが無い方は真ん中のテキストボックスに E メールアドレスを入力していただき、 Sign up for Github を押していただき受信したメールの指示に従いアカウント登録お願いします。</li>
+</ol>
+<p class="image-container"><img style="width: 448.50px" src="img/f82ebe8b07c51ce4.png"></p>
+<ol type="1" start="2">
+<li>ログイン</li>
+</ol>
+<p class="image-container"><img style="width: 182.64px" src="img/99949d8fe4be3d0.png"></p>
+<ol type="1" start="3">
+<li>Fork したいページにアクセスして右上の Fork を押します。</li>
+</ol>
+<p><a href="https://github.com/aws-samples/aws-proton-sample-fargate-service*" target="_blank">https://github.com/aws-samples/aws-proton-sample-fargate-service</a><img style="width: 419.50px" src="img/3c9e19559b6c97ed.png"></p>
+<ol type="1" start="4">
+<li>グループに所属している場合は、どのアカウントにフォークするのか選択肢が出てくるので、フォークしたアカウントを選択します。</li>
+</ol>
+<p class="image-container"><img style="width: 445.70px" src="img/77e52f3ad73a4216.png"></p>
+<ol type="1" start="5">
+<li>しばらく待つと自分のアカウントにフォークされます。<img style="width: 601.70px" src="img/bc78f70811a33e07.png"></li>
+</ol>
+<h2 is-upgraded>Protonに必要な事前設定を適用する</h2>
+<p>Protonの構築はAWS CLIを利用して進めていきます。AWS CLIはCloud9上で実行しますので、まずはCloud9を作成していきましょう。</p>
+<ol type="1" start="1">
+<li><strong>Protonコマンドを有効化する為、Cloud9のAWS CLIを最新バージョンとする<br><br>※ aws --vserion 実行時に aws-cli/1.19.91 より新しいバージョンが返ってきた場合は、本手順はスキップし、 2. jq インストールの手順 に進んでください。<br></strong></li>
+</ol>
+<pre>①AWS CLIの現在のバージョンを確認する
+aws --version
+⇒aws-cli/1.19.87 Python/2.7.18 
+
+②pip3でaws cliの最新バージョンをインストールする
+pip3 install --upgrade --user awscli
+
+③awsを含むフォルダがPATH変数の一部であることを確認する
+ls -a ~
+⇒.awsが含まれる事
+
+④PATHを書き換える
+export PATH=$HOME/.local/bin:$PATH
+
+⑤プロファイルを現在のセッションに再ロードする
+source ~/.bash_profile
+
+⑥AWS CLIのバージョンが1.19.91になっている事を確認する
+aws --version
+⇒aws-cli/1.19.91 Python/3.7.9 Linux/4.14.232-176.381.amzn2.x86_64 botocore/1.20.91</pre>
+<ol type="1" start="2">
+<li><strong>AWS CLI実行結果のjsonをパースするため、jqをインストールします。コンソールより下記のコマンドを実行します。<br>こうなります。</strong></li>
+</ol>
+<pre>sudo yum install -y jq</pre>
+<ol type="1" start="3">
+<li><strong>Protonセットアップ用のコードをGithub上のリポジトリよりクローンします。</strong></li>
+</ol>
+<pre>git clone \
+https://github.com/aws-samples/aws-proton-sample-templates.git</pre>
+<ol type="1" start="4">
+<li><strong>クローンしたディレクトリへ移動します。</strong></li>
+</ol>
+<pre>cd ~/environment/aws-proton-sample-templates/loadbalanced-fargate-svc</pre>
+<ol type="1" start="5">
+<li><strong>後続の手順で利用するパラメーターとして、AWSアカウントIDを環境変数に登録します。</strong></li>
+</ol>
+<pre>account_id=`aws sts get-caller-identity|jq -r &#34;.Account&#34;`</pre>
+<ol type="1" start="6">
+<li><strong>AWSアカウントIDが環境変数として登録されていることを確認します。登録されていれば12桁の数字が出力されます。</strong></li>
+</ol>
+<pre>echo $account_id</pre>
+<ol type="1" start="7">
+<li><strong>aws proton help コマンドを実行し、AWS CLIに追加されていることを確認します。ヘルプが表示されればOKです。表示されたら q を入力し、ヘルプ表示から抜けます。</strong></li>
+</ol>
+<pre>aws proton help</pre>
+<ol type="1" start="8">
+<li><strong>Proton が CloudFormation を用いてAWSアカウント常にリソースを作成しますので、テンプレートを扱うための S3バケット を作成します。proton-cli-templates-AWSアカウントID数字12桁 の名前でS3バケットが作成されます。<br><br></strong>例: proton-cli-templates-123456789012<br><br>※ region=us-west-2  と LocationConstraint=us-west-2 について、オレゴン以外を利用している場合は、利用しているリージョンに置き換えてください。</li>
+</ol>
+<pre>aws s3api create-bucket \
+  --region us-west-2 \
+  --bucket &#34;proton-cli-templates-${account_id}&#34; \
+  --create-bucket-configuration LocationConstraint=us-west-2</pre>
+<ol type="1" start="9">
+<li><strong>s3バケットが作成されたことを確認します。AWSマネージメントコンソールより、s3のコンソールを開きます。<br>(現在開いているCloud9のコンソールとは別タブで開くことを推奨します)</strong></li>
+</ol>
+<p>左上の Cloud9 のアイコンをクリックすると出てくる、Go To Your Dashboard をクリックすると新しいタブを開くことができます。<img style="width: 569.78px" src="img/8fa5d94c5211fb9e.png"><br><img style="width: 601.70px" src="img/f6ef3abfc21dbe13.png"><br></p>
+<ol type="1" start="10">
+<li><strong>s3バケットの検索フォームから proton-cli-templates-AWSアカウントID12桁の数字 を入力します。作成したバケットが表示されれば確認完了です。<br><br></strong>例：proton-cli-templates-123456789012<br><br><img style="width: 601.70px" src="img/f567138f4a4c9c8d.png"><br></li>
+<li><strong>権限関連の制限でハンズオンが停止しないよう、Cloud9インスタンスにIAMロールを付与します。</strong></li>
+</ol>
+<p><strong>EC2サービスを選択後、aws-cloud9-XXのインスタンスをチェックし、アクションからセキュリティ、IAMロールを変更をクリック</strong></p>
+<p class="image-container"><img style="width: 601.70px" src="img/bf2727dfc46393c5.png"></p>
+<p><strong>新しいIAMロールを作成をクリックし、IAM作成画面に遷移してください。</strong></p>
+<p class="image-container"><img style="width: 601.70px" src="img/e2b88ec5aa81931.png"></p>
+<p><strong>EC2を選択し、アクセス権限に移動</strong></p>
+<p class="image-container"><img style="width: 601.70px" src="img/35f6cd2eff38c699.png"></p>
+<p><strong>AdministratorAccess権限にチェックを入れ、任意の名前でIAMロールを作成する</strong></p>
+<p><strong>作成後、EC2のアタッチ画面で更新ボタンをクリックし、Cloud9用のEC2に作成したIAMロールをアタッチする。</strong></p>
+<p class="image-container"><img style="width: 601.70px" src="img/7ba8fe3404cfead5.png"></p>
+<p><strong>Cloud9のコンソールに戻り、右上の歯車マークからAWS Settingsを選択し、</strong></p>
+<p><strong>CredentialsのAWS managed temporary credentialsのチェックを無効化する</strong></p>
+<p class="image-container"><img style="width: 601.70px" src="img/2c8b9348d81df1d.png"></p>
+<ol type="1" start="12">
+<li><strong>Protonが、Codeサービスによる継続的デリバリーパイプラインを通して、アプリケーションをデプロイできるようにするため、自身のGithubアカウントにクローンしたサンプルアプリケーションリポジトリとAWS CodeStar Connectionの接続を構成します。<br>CodeStar Connectionsの設定を行うため、CodePipelineコンソールへ移動します。(Chromeなどで別タブで開くことを推奨)<br></strong><img style="width: 601.70px" src="img/7c5eeea7801d9972.png"><br><br></li>
+<li><strong>左のツリーより、「設定」-&gt;「接続」をクリックします。<br></strong><img style="width: 601.70px" src="img/3f3065ee5024e586.png"><br></li>
+<li><strong>「接続を作成」をクリックします。<br></strong><img style="width: 601.70px" src="img/d1018631faf82d59.png"><br></li>
+<li><strong>「Github」を選択、「GitHub アプリ接続を作成する」に接続名を入力します。接続名は 名字-年月日(yamaguchi-20210611)など、あとで環境を掃除する際にわかりやすい名前にしてください。<br>入力後、「GitHubに接続する」をクリックします。<br></strong><img style="width: 601.70px" src="img/d011fbf10b269362.png"><br></li>
+<li><strong>初回接続時は以下の案内が出るので、Authorise AWS Connector for GitHubをクリック</strong></li>
+</ol>
+<p class="image-container"><img style="width: 394.50px" src="img/35665dab56a26beb.png"></p>
+<ol type="1" start="17">
+<li><strong>「新しいアプリをインストールする」をクリックします。<br></strong><img style="width: 601.70px" src="img/dc068bc692592b04.png"><br></li>
+<li><strong>Githubへ画面遷移します。ProtonサンプルコードのリポジトリをForkしたGithubアカウントを選択します。<br></strong><img style="width: 601.70px" src="img/a50b9572caa2cba1.png"><br></li>
+<li><strong>ForkしたProtonサンプルコードのリポジトリを選択し、「Install」をクリックします。<br></strong><img style="width: 601.70px" src="img/ad051e9ed40f5a1.png"><br></li>
+<li><strong>CodeStar Connectionsの設定画面にリダイレクトされます。<br>「接続」をクリックして設定を完了します。<br></strong><img style="width: 601.70px" src="img/5a71e006a3fac9ff.png"></li>
+<li><strong>作成結果が表示されますのでステータスが「利用可能」になっていることを確認します。<br></strong><img style="width: 601.70px" src="img/8bb2e319193ff97d.png"></li>
+</ol>
+<ol type="1" start="22">
+<li><strong>Protonのサービスロール(アカウントロール・CI/CDパイプラインサービスロールとも呼称される)を作成します。マネージメントコンソールより、AWS Protonのコンソールに移動します。<br></strong><img style="width: 601.70px" src="img/ef1c39a2feb6393d.png"><br></li>
+<li><strong>左側のハンバーガーメニューをクリックし、「アカウントロール」をクリックします。<br></strong><img style="width: 601.70px" src="img/7d98f1b17857735e.png"><br></li>
+<li><strong>アカウントロールの画面に移動したら、「設定」ボタンをクリックします。<br></strong><img style="width: 601.70px" src="img/ccd9da77699119e9.png"><br></li>
+<li><strong>CI/CDパイプラインロールの設定で、「新しいサービスロール」にチェック、「パイプラインサービスロール名」に ProtonServiceRole を入力、「アカウントに管理権限を〜」にチェックを入れ、「変更を保存」ボタンをクリックします。<br></strong><img style="width: 601.70px" src="img/dfc15d858f3d1ea7.png"><br><br><br></li>
+<li><strong>「アカウントロールが正常に設定されました」のメッセージが出力され、入力したCI/CDパイプラインロール名が表示されていることを確認します。<br></strong><img style="width: 601.70px" src="img/2a9a3a582c3c22c0.png"><br></li>
+</ol>
+<p>以上でProtonを利用する下準備は完了です。</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Protonに開発エンジニアが利用するための環境とサービスを登録する(インフラエンジニアの作業)" duration="0">
+        <h2 is-upgraded>環境テンプレートを登録する</h2>
+<p>Protonにサンプルの環境テンプレートを登録します。環境テンプレートは、VPC、サブネットなどアプリケーションの実行環境(本ハンズオンではECS Fargate)が稼働するために必要なインフラ構成を定義したCloudFormationテンプレートとなります。<br><br>本ハンズオンで利用するサンプルのテンプレートはECSクラスターと２つのパブリックサブネットを持つVPCで構成されています。</p>
+<ol type="1" start="1">
+<li><strong>環境テンプレート(環境作成を処理するためのCloudFormationテンプレートの入れ物)を作成します<br><br></strong>※ --region us-west-2 について、オレゴン以外を利用している場合は、利用しているリージョンに置き換えてください。<br></li>
+</ol>
+<pre>aws proton create-environment-template \
+  --region us-west-2 \
+  --name &#34;public-vpc&#34; \
+  --display-name &#34;PublicVPC&#34; \
+  --description &#34;VPC with Public Access and ECS Cluster&#34;</pre>
+<p><br>レスポンス例：<br></p>
+<pre>{
+    &#34;environmentTemplate&#34;: {
+        &#34;arn&#34;: &#34;arn:aws:proton:us-west-2:123456789012:environment-template/public-vpc&#34;,
+        &#34;createdAt&#34;: 1623317847.386,
+        &#34;description&#34;: &#34;VPC with Public Access and ECS Cluster&#34;,
+        &#34;displayName&#34;: &#34;PublicVPC&#34;,
+        &#34;lastModifiedAt&#34;: 1623317847.386,
+        &#34;name&#34;: &#34;public-vpc&#34;
+    }
+}</pre>
+<ol type="1" start="2">
+<li><strong>続いて、環境テンプレートにバージョンを作成します。環境テンプレートには、バージョン(メジャーバージョン、マイナーバージョン)という概念があり、利用できるテンプレートを世代管理することが可能です。バージョンと環境テンプレートに紐づくCloudFormationテンプレートはセットで管理されます。CloudFormationテンプレートを配置し、環境テンプレートのバージョンと紐付けを行います。初期は、メジャーバージョン１、 マイナーバージョン 0 で登録されます。<br><br></strong>※ --region us-west-2 について、オレゴン以外を利用している場合は、利用しているリージョンに置き換えてください。<br></li>
+</ol>
+<pre>tar -zcvf env-template.tar.gz environment/
+
+aws s3 cp env-template.tar.gz s3://proton-cli-templates-${account_id}/env-template.tar.gz \
+--region us-west-2
+
+rm env-template.tar.gz
+
+aws proton create-environment-template-version \
+  --region us-west-2 \
+  --template-name &#34;public-vpc&#34; \
+  --description &#34;Version 1&#34; \
+  --source s3=&#34;{bucket=proton-cli-templates-${account_id},key=env-template.tar.gz}&#34;</pre>
+<p><br>レスポンス例：<br></p>
+<pre>{
+    &#34;environmentTemplateVersion&#34;: {
+        &#34;arn&#34;: &#34;arn:aws:proton:us-west-2:123456789012:environment-template/public-vpc:1.0&#34;,
+        &#34;createdAt&#34;: 1623317807.346,
+        &#34;description&#34;: &#34;Version 1&#34;,
+        &#34;lastModifiedAt&#34;: 1623317807.346,
+        &#34;majorVersion&#34;: &#34;1&#34;,
+        &#34;minorVersion&#34;: &#34;0&#34;,
+        &#34;status&#34;: &#34;REGISTRATION_IN_PROGRESS&#34;,
+        &#34;templateName&#34;: &#34;public-vpc&#34;
+    }
+}</pre>
+<ol type="1" start="3">
+<li><strong>環境テンプレートの登録状態をバージョン指定し確認します。DRAFTの状態で環境テンプレートが登録されていることが確認できます。<br><br></strong>※ --region us-west-2 について、オレゴン以外を利用している場合は、利用しているリージョンに置き換えてください。<br></li>
+</ol>
+<pre>aws proton get-environment-template-version \
+  --region us-west-2 \
+  --template-name &#34;public-vpc&#34; \
+  --major-version &#34;1&#34; \
+  --minor-version &#34;0&#34;</pre>
+<p>レスポンス例：<br></p>
+<pre>{
+    &#34;environmentTemplateVersion&#34;: {
+        &#34;arn&#34;: &#34;arn:aws:proton:us-west-2:123456789012:environment-template/public-vpc:1.0&#34;,
+        &#34;createdAt&#34;: 1623317855.004,
+        &#34;description&#34;: &#34;Version 1&#34;,
+        &#34;lastModifiedAt&#34;: 1623317857.118,
+        &#34;majorVersion&#34;: &#34;1&#34;,
+        &#34;minorVersion&#34;: &#34;0&#34;,
+        &#34;schema&#34;: &#34;schema:\n  format:\n    openapi: \&#34;3.0.0\&#34;\n  environment_input_type: \&#34;PublicEnvironmentInput\&#34;\n  types:\n    PublicEnvironmentInput:\n      type: object\n      description: \&#34;Input properties for my environment\&#34;\n      properties:\n        vpc_cidr:\n          type: string\n          description: \&#34;This CIDR range for your VPC\&#34;\n          default: 10.0.0.0/16\n          pattern: ([0-9]{1,3}\\.){3}[0-9]{1,3}($|/(16|24))\n        subnet_one_cidr:\n          type: string\n          description: \&#34;The CIDR range for subnet one\&#34;\n          default: 10.0.0.0/24\n          pattern: ([0-9]{1,3}\\.){3}[0-9]{1,3}($|/(16|24))\n        subnet_two_cidr:\n          type: string\n          description: \&#34;The CIDR range for subnet one\&#34;\n          default: 10.0.1.0/24\n          pattern: ([0-9]{1,3}\\.){3}[0-9]{1,3}($|/(16|24))\n&#34;,
+        &#34;status&#34;: &#34;DRAFT&#34;,
+        &#34;statusMessage&#34;: &#34;&#34;,
+        &#34;templateName&#34;: &#34;public-vpc&#34;
+    }
+}</pre>
+<ol type="1" start="4">
+<li><strong>環境テンプレートのメジャーバージョン、マイナーバージョンには、DRAFT、PUBLISHED(公開)のステータスがあります。これによりインフラチームが環境テンプレートの安定性を確認するまではDRAFTとしておき、開発チームは公開された環境テンプレートのみ利用できるようにする、などの管理が可能となります。<br>先ほど登録した環境テンプレートはDRAFTステータスですので、PUBLISHEDしてみましょう。<br><br></strong>※ --region us-west-2 について、オレゴン以外を利用している場合は、利用しているリージョンに置き換えてください。<br></li>
+</ol>
+<pre>aws proton update-environment-template-version \
+  --region us-west-2 \
+  --template-name &#34;public-vpc&#34; \
+  --major-version &#34;1&#34; \
+  --minor-version &#34;0&#34; \
+  --status &#34;PUBLISHED&#34;</pre>
+<p><br>レスポンス例：<br></p>
+<pre>{
+    &#34;environmentTemplateVersion&#34;: {
+        &#34;arn&#34;: &#34;arn:aws:proton:us-west-2:123456789012:environment-template/public-vpc:1.0&#34;,
+        &#34;createdAt&#34;: 1623317855.004,
+        &#34;description&#34;: &#34;Version 1&#34;,
+        &#34;lastModifiedAt&#34;: 1623318046.889,
+        &#34;majorVersion&#34;: &#34;1&#34;,
+        &#34;minorVersion&#34;: &#34;0&#34;,
+        &#34;recommendedMinorVersion&#34;: &#34;0&#34;,
+        &#34;schema&#34;: &#34;schema:\n  format:\n    openapi: \&#34;3.0.0\&#34;\n  environment_input_type: \&#34;PublicEnvironmentInput\&#34;\n  types:\n    PublicEnvironmentInput:\n      type: object\n      description: \&#34;Input properties for my environment\&#34;\n      properties:\n        vpc_cidr:\n          type: string\n          description: \&#34;This CIDR range for your VPC\&#34;\n          default: 10.0.0.0/16\n          pattern: ([0-9]{1,3}\\.){3}[0-9]{1,3}($|/(16|24))\n        subnet_one_cidr:\n          type: string\n          description: \&#34;The CIDR range for subnet one\&#34;\n          default: 10.0.0.0/24\n          pattern: ([0-9]{1,3}\\.){3}[0-9]{1,3}($|/(16|24))\n        subnet_two_cidr:\n          type: string\n          description: \&#34;The CIDR range for subnet one\&#34;\n          default: 10.0.1.0/24\n          pattern: ([0-9]{1,3}\\.){3}[0-9]{1,3}($|/(16|24))\n&#34;,
+        &#34;status&#34;: &#34;PUBLISHED&#34;,
+        &#34;statusMessage&#34;: &#34;&#34;,
+        &#34;templateName&#34;: &#34;public-vpc&#34;
+    }
+}</pre>
+<p>以上で環境テンプレートの登録、公開は完了です。<br>続いてサービステンプレートの登録をへ進みましょう。</p>
+<h2 is-upgraded>サービステンプレートを登録する</h2>
+<p>Protonにサンプルのサービステンプレートを登録します。このサービステンプレートには、ロードバランサーの背後でECS Fargateサービスをプロビジョニングするために必要なすべてのリソースと、AWS CodeBuild/CodePipelineを使用した継続的デリバリーパイプラインが含まれています。実体は環境テンプレート同じくCloudFormationテンプレートです。<br></p>
+<ol type="1" start="1">
+<li><strong>サービステンプレートを作成します。<br><br></strong>※ --region us-west-2 について、オレゴン以外を利用している場合は、利用しているリージョンに置き換えてください。</li>
+</ol>
+<pre>aws proton create-service-template \
+  --region us-west-2 \
+  --name &#34;lb-fargate-service&#34; \
+  --display-name &#34;LoadbalancedFargateService&#34; \
+  --description &#34;Fargate Service with an Application Load Balancer&#34;</pre>
+<p><br>レスポンス例：<br></p>
+<pre>{
+    &#34;serviceTemplate&#34;: {
+        &#34;arn&#34;: &#34;arn:aws:proton:us-west-2:123456789012:service-template/lb-fargate-service&#34;,
+        &#34;createdAt&#34;: 1623318297.929,
+        &#34;description&#34;: &#34;Fargate Service with an Application Load Balancer&#34;,
+        &#34;displayName&#34;: &#34;LoadbalancedFargateService&#34;,
+        &#34;lastModifiedAt&#34;: 1623318297.929,
+        &#34;name&#34;: &#34;lb-fargate-service&#34;
+    }
+}</pre>
+<ol type="1" start="2">
+<li><strong>サービステンプレートにも同じようにバージョン(メジャーバージョン、マイナーバージョン)、そしてDraft、Published(公開)のステータスがあります。<br>さらに、サービステンプレートは環境テンプレートと関連づけが必要となります。(そのサービスはどの環境で動作させるのかという関連がなければ、どんな環境でも動くサービスとして成立しなければいけません。そんなことは保証できませんよね)<br>これにより、環境テンプレートで作成したVPCなどの上で、サービステンプレートで定義したサービス(アプリケーション実行環境)をProtonを通して構成できるようになります。<br><br></strong>※ --region us-west-2 と <code>arn:aws:proton:us-west-2</code> について、オレゴン以外を利用している場合は、利用しているリージョンに置き換えてください。</li>
+</ol>
+<pre>tar -zcvf svc-template.tar.gz service/
+
+aws s3 cp svc-template.tar.gz s3://proton-cli-templates-${account_id}/svc-template.tar.gz --region us-west-2
+
+rm svc-template.tar.gz
+
+aws proton create-service-template-version \
+  --region us-west-2 \
+  --template-name &#34;lb-fargate-service&#34; \
+  --description &#34;Version 1&#34; \
+  --source s3=&#34;{bucket=proton-cli-templates-${account_id},key=svc-template.tar.gz}&#34; \
+  --compatible-environment-templates &#39;[{&#34;templateName&#34;:&#34;public-vpc&#34;,&#34;majorVersion&#34;:&#34;1&#34;}]&#39;</pre>
+<p><br>レスポンス例：<br></p>
+<pre>{
+    &#34;serviceTemplateVersion&#34;: {
+        &#34;arn&#34;: &#34;arn:aws:proton:us-west-2:123456789012:service-template/lb-fargate-service:1.0&#34;,
+        &#34;compatibleEnvironmentTemplates&#34;: [
+            {
+                &#34;majorVersion&#34;: &#34;1&#34;,
+                &#34;templateName&#34;: &#34;public-vpc&#34;
+            }
+        ],
+        &#34;createdAt&#34;: 1623319051.775,
+        &#34;description&#34;: &#34;Version 1&#34;,
+        &#34;lastModifiedAt&#34;: 1623319051.775,
+        &#34;majorVersion&#34;: &#34;1&#34;,
+        &#34;minorVersion&#34;: &#34;0&#34;,
+        &#34;status&#34;: &#34;REGISTRATION_IN_PROGRESS&#34;,
+        &#34;templateName&#34;: &#34;lb-fargate-service&#34;
+    }
+}
+</pre>
+<ol type="1" start="3">
+<li><strong>サービステンプレートの登録状態をバージョン指定し確認します。DRAFTの状態でサービステンプレートが登録されていることが確認できます。<br><br></strong>※ --region us-west-2 について、オレゴン以外を利用している場合は、利用しているリージョンに置き換えてください。</li>
+</ol>
+<pre>aws proton get-service-template-version \
+  --region us-west-2 \
+  --template-name &#34;lb-fargate-service&#34; \
+  --major-version &#34;1&#34; \
+  --minor-version &#34;0&#34;</pre>
+<p><br>レスポンス例：<br></p>
+<pre>{
+    &#34;serviceTemplateVersion&#34;: {
+        &#34;arn&#34;: &#34;arn:aws:proton:us-west-2:123456789012:service-template/lb-fargate-service:1.0&#34;,
+        &#34;compatibleEnvironmentTemplates&#34;: [
+            {
+                &#34;majorVersion&#34;: &#34;1&#34;,
+                &#34;templateName&#34;: &#34;public-vpc&#34;
+            }
+        ],
+        &#34;createdAt&#34;: 1623319051.775,
+        &#34;description&#34;: &#34;Version 1&#34;,
+        &#34;lastModifiedAt&#34;: 1623319053.84,
+        &#34;majorVersion&#34;: &#34;1&#34;,
+        &#34;minorVersion&#34;: &#34;0&#34;,
+        &#34;schema&#34;: &#34;schema:\n  format:\n    openapi: \&#34;3.0.0\&#34;\n  service_input_type: \&#34;LoadBalancedServiceInput\&#34;\n  pipeline_input_type: \&#34;PipelineInputs\&#34;\n\n  types:\n    LoadBalancedServiceInput:\n      type: object\n      description: \&#34;Input properties for a loadbalanced Fargate service\&#34;\n      properties:\n        port:\n          type: number\n          description: \&#34;The port to route traffic to\&#34;\n          default: 80\n          minimum: 0\n          maximum: 65535\n        desired_count:\n          type: number\n          description: \&#34;The default number of Fargate tasks you want running\&#34;\n          default: 1\n          minimum: 1\n        task_size:\n          type: string\n          description: \&#34;The size of the task you want to run\&#34;\n          enum: [\&#34;x-small\&#34;, \&#34;small\&#34;, \&#34;medium\&#34;, \&#34;large\&#34;, \&#34;x-large\&#34;]\n          default: \&#34;x-small\&#34;\n        image:\n          type: string\n          description: \&#34;The name/url of the container image\&#34;\n          default: \&#34;public.ecr.aws/z9d2n7e1/nginx:1.19.5\&#34;\n          minLength: 1\n          maxLength: 200\n\n    PipelineInputs:\n      type: object\n      description: \&#34;Pipeline input properties\&#34;\n      properties:\n        dockerfile:\n          type: string\n          description: \&#34;The location of the Dockerfile to build\&#34;\n          default: \&#34;Dockerfile\&#34;\n          minLength: 1\n          maxLength: 100\n        unit_test_command:\n          type: string\n          description: \&#34;The command to run to unit test the application code\&#34;\n          default: \&#34;echo &#39;add your unit test command here&#39;\&#34;\n          minLength: 1\n          maxLength: 200\n&#34;,
+        &#34;status&#34;: &#34;DRAFT&#34;,
+        &#34;statusMessage&#34;: &#34;&#34;,
+        &#34;templateName&#34;: &#34;lb-fargate-service&#34;
+    }
+}</pre>
+<ol type="1" start="4">
+<li><strong>サービステンプレートにもメジャーバージョン、マイナーバージョンに対する、DRAFT、PUBLISHED(公開)のステータスがあります。先ほど登録したサービステンプレートはDRAFTステータスですので、PUBLISHEDしてみましょう。</strong></li>
+</ol>
+<p><br>※ --region us-west-2 について、オレゴン以外を利用している場合は、利用しているリージョンに置き換えてください。</p>
+<pre>aws proton update-service-template-version \
+  --region us-west-2 \
+  --template-name &#34;lb-fargate-service&#34; \
+  --major-version &#34;1&#34; \
+  --minor-version &#34;0&#34; \
+  --status &#34;PUBLISHED&#34;</pre>
+<p>レスポンス例：<br></p>
+<pre>{
+    &#34;serviceTemplateVersion&#34;: {
+        &#34;arn&#34;: &#34;arn:aws:proton:us-west-2:123456789012:service-template/lb-fargate-service:1.0&#34;,
+        &#34;compatibleEnvironmentTemplates&#34;: [
+            {
+                &#34;majorVersion&#34;: &#34;1&#34;,
+                &#34;templateName&#34;: &#34;public-vpc&#34;
+            }
+        ],
+        &#34;createdAt&#34;: 1623319051.775,
+        &#34;description&#34;: &#34;Version 1&#34;,
+        &#34;lastModifiedAt&#34;: 1623319713.635,
+        &#34;majorVersion&#34;: &#34;1&#34;,
+        &#34;minorVersion&#34;: &#34;0&#34;,
+        &#34;recommendedMinorVersion&#34;: &#34;0&#34;,
+        &#34;schema&#34;: &#34;schema:\n  format:\n    openapi: \&#34;3.0.0\&#34;\n  service_input_type: \&#34;LoadBalancedServiceInput\&#34;\n  pipeline_input_type: \&#34;PipelineInputs\&#34;\n\n  types:\n    LoadBalancedServiceInput:\n      type: object\n      description: \&#34;Input properties for a loadbalanced Fargate service\&#34;\n      properties:\n        port:\n          type: number\n          description: \&#34;The port to route traffic to\&#34;\n          default: 80\n          minimum: 0\n          maximum: 65535\n        desired_count:\n          type: number\n          description: \&#34;The default number of Fargate tasks you want running\&#34;\n          default: 1\n          minimum: 1\n        task_size:\n          type: string\n          description: \&#34;The size of the task you want to run\&#34;\n          enum: [\&#34;x-small\&#34;, \&#34;small\&#34;, \&#34;medium\&#34;, \&#34;large\&#34;, \&#34;x-large\&#34;]\n          default: \&#34;x-small\&#34;\n        image:\n          type: string\n          description: \&#34;The name/url of the container image\&#34;\n          default: \&#34;public.ecr.aws/z9d2n7e1/nginx:1.19.5\&#34;\n          minLength: 1\n          maxLength: 200\n\n    PipelineInputs:\n      type: object\n      description: \&#34;Pipeline input properties\&#34;\n      properties:\n        dockerfile:\n          type: string\n          description: \&#34;The location of the Dockerfile to build\&#34;\n          default: \&#34;Dockerfile\&#34;\n          minLength: 1\n          maxLength: 100\n        unit_test_command:\n          type: string\n          description: \&#34;The command to run to unit test the application code\&#34;\n          default: \&#34;echo &#39;add your unit test command here&#39;\&#34;\n          minLength: 1\n          maxLength: 200\n&#34;,
+        &#34;status&#34;: &#34;PUBLISHED&#34;,
+        &#34;statusMessage&#34;: &#34;&#34;,
+        &#34;templateName&#34;: &#34;lb-fargate-service&#34;
+    }
+}</pre>
+<p>Protonに環境テンプレート、サービステンプレートが公開されました！</p>
+<p>AWSマネージメントコンソールのProtonコンソールから環境テンプレート、サービステンプレートを確認してみましょう。</p>
+<h2 is-upgraded>Protonコンソールから環境テンプレート、サービステンプレートを確認する</h2>
+<ol type="1" start="1">
+<li><strong>AWSマネージメントコンソールのProtonコンソールに接続します。<br>(Chromeなどで別タブで開くことを推奨)</strong></li>
+</ol>
+<p class="image-container"><img style="width: 601.70px" src="img/ef1c39a2feb6393d.png"><br></p>
+<ol type="1" start="2">
+<li><strong>左のツリーより「環境テンプレート」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/8b86c6e781543ba.png"><br></li>
+<li><strong>「PublicVPC」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/86dacd98d58a0497.png"><br></li>
+<li><strong>最後にPublished(公開)したバージョンが推奨バージョンとしてバッジ表示されています。<br>環境テンプレートのバージョンにメジャーバージョン、マイナーバージョンがリストされ、ステータスがPublished(公開)になっていることも確認できます。<br><br></strong><img style="width: 601.70px" src="img/f6af1be8dc3c7e2d.png"><br></li>
+<li><strong>つづいて、「サービステンプレート」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/66fba0ff465c866.png"><br></li>
+<li><strong>「LoadbalancedFargateService」 をクリックします。<br><br></strong><img style="width: 601.70px" src="img/e730b642742a1fe7.png"><br></li>
+<li><strong>サービステンプレートが対応する環境テンプレートが表示されています。(環境テンプレートとサービステンプレートの紐付きを確認できる)<br>さらにサービステンプレートもバージョンがあり、メジャーバージョン、マイナーバージョンがリストされ、ステータスがPublished(公開)になっていることも確認できます。<br><br></strong><img style="width: 601.70px" src="img/fecc4556edecc929.png"><br></li>
+</ol>
+<p>一連のオペレーションで登録した環境テンプレート、サービステンプレートの状態が確認できました。全て最新のマイナーバージョンが公開され、開発チームで利用可能となっています。<br><br>さっそく開発チームにProtonからアプリケーション実行環境とアプリケーションをデプロイしてもらいましょう！(ハンズオンではいずれも自分でやるのですが。。。)</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Protonからアプリケーション実行環境にアプリケーションをデプロイする(開発エンジニアの作業)" duration="0">
+        <h2 is-upgraded>AWSマネージメントコンソールからProtonを操作してアプリケーション実行環境を構成する</h2>
+<p>Protonにサンプルの環境テンプレートを登録します。環境テンプレートは、VPC、サブネットなどアプリケーションの実行環境(本ハンズオンではECS Fargate)が稼働するために必要なインフラ構成を定義したCloudFormationテンプレートとなります。<br><br>本ハンズオンで利用するサンプルのテンプレートはECSクラスターと２つのパブリックサブネットを持つVPCで構成されています。</p>
+<ol type="1" start="1">
+<li><strong>先ほど使ったProtonのコンソールを使って進めます。<br>左のツリーより「環境」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/c61d52dcb85701db.png"><br></li>
+<li><strong>「環境を作成する」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/4d415106ac1ac518.png"><br></li>
+<li><strong>環境テンプレートを選択より、先ほど作成した「PublicVPC」 (ラジオボックス)を選択し、「設定」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/8e79e2f058ed1ef6.png"><br></li>
+<li><strong>「環境名」に 名字-environment-20210611 (例：yamaguchi-environment-20210611)を入力、「環境ロール」に ProtonServiceRole を選択し、「次へ」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/319fe98e0c87330f.png"><br><img style="width: 601.70px" src="img/96d7e3909f37bccd.png"><br></li>
+<li><strong>「Vpc cidr」に 10.100.0.0/16、「Subnet one cidr」に 10.100.0.0/24、「Subnet two cidr」に 10.100.1.0/24 を入力し、「次へ」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/a5efb3e54e5caaf0.png"><br></li>
+<li><strong>レビュー画面は「作成」をクリックして次にすすみます。<br><br></strong><img style="width: 601.70px" src="img/6133266ce0fc0be9.png"><br><img style="width: 601.70px" src="img/ba67ede9965a09c4.png"><br></li>
+<li><strong>環境の作成が実行されます。実際の処理はCloudFormationが実行されています。<br>デプロイのステータスが  In progress から  Succeeded に変わるまで数分かかります。数分後、リロードアイコンをクリックし、Succeededに変わることを確認します。<br>(このタイミングで飲み物など取りに行っても良いかもしれません。時間がある人は別のタブでCloudFormationを見ると動きがさらに理解できると思います)<br><br></strong><img style="width: 601.70px" src="img/20c084e427f6c4d4.png"><br><img style="width: 601.70px" src="img/906ef63135eaab5a.png"><br></li>
+<li><strong>デプロイのステータスがSucceeded になっていることを確認し、左のツリーより「サービス」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/8dc7ce8314f72105.png"><br></li>
+<li><strong>「サービスを作成」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/153c46d7b4158bf4.png"><br></li>
+<li><strong>環境テンプレートを選択より、先ほど作成した「LoadbalancedFargateService」 (ラジオボックス)を選択し、「設定」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/99997a87bb344518.png"><br></li>
+<li><strong>「サービス名」に 名字-service-日付 (例：yamaguchi-service-20210611)、ブランチ名に「main」、リポジトリIDに「githubユーザ名/aws-proton-sample-fargate-service」(※)、リポジトリ接続に先ほど作成したCodeStar Connectionsを選択し、「次へ」をクリックします。<br><br></strong>※リポジトリIDは下記の画像を参考に、みなさんのリポジトリURLよりコピペしてください<br><img style="width: 534.00px" src="img/644f03db974c4e17.png"><br><br><img style="width: 601.70px" src="img/3151e3adda768672.png"><br><img style="width: 601.70px" src="img/56ba5cb00dc7583b.png"><br></li>
+<li><strong>サービスはサービス内で動作するインスタンス(この場合はECS)がセットになります。サービス内で動作するサービスインスタンスに必要なパラメータを入力します。<br>「Name」に 名字-instance-日付 (例：yamaguchi-instance-20210611)を入力、「Environment」は先ほど作成した環境を選択し、「次へ」をクリックします。</strong></li>
+</ol>
+<p class="image-container"><img style="width: 601.70px" src="img/cdb83ff437f21c77.png"><br><img style="width: 601.70px" src="img/8d2b9ab66b74efdc.png"><br></p>
+<ol type="1" start="13">
+<li><strong>レビュー画面は「作成」をクリックして次にすすみます。<br><br></strong><img style="width: 601.70px" src="img/db4aa685d3fc8750.png"><br><img style="width: 601.70px" src="img/1c3ef9cbb042fb05.png"><br></li>
+<li><strong>サービスおよびサービスインスタンスの作成が実行されます。実際の処理はCloudFormationが実行されています。<br>デプロイのステータスが  In progress から  Succeeded に変わるまで数分かかります。数分後、リロードアイコンをクリックし、Succeededに変わることを確認します。<br>(再びブレイクタイムです、飲み物をどうぞ。時間がある人は別のタブでCloudFormationを見ると動きがさらに理解できると思います)</strong></li>
+</ol>
+<p class="image-container"><img style="width: 601.70px" src="img/c0f8760c9cf3e822.png"><br><img style="width: 601.70px" src="img/f9c4f886671bf814.png"><br></p>
+<ol type="1" start="15">
+<li><strong>デプロイのステータスがSucceeded になっていることを確認し、作成されたサービスインスタンス名をクリックします。<br><br></strong><img style="width: 601.70px" src="img/b5ff6bf083fd90f9.png"><br></li>
+<li><strong>ServiceEndpoint の値がデプロイされたサービスインスタンス上で稼働するアプリケーションのエンドポイント(接続先)となります。ServiceEndpoint の値(URL)をコピーして、ブラウザからアクセスしてみましょう。<br><br></strong><img style="width: 601.70px" src="img/b9d1f0266f62e88d.png"><br></li>
+<li><strong>現時点で、AWS Sampleにて公開されているサンプルコードでは、CodeBuildのビルド定義にミスがあり、CodePipelineによるパイプライン実行が正常動作しません。(aws protonコマンドが適用されていないCodeBuildのビルド環境で各処理が動作することと、現在は存在しないプレビュー時のコマンドがビルド定義記載されているため)<br>根本的な修正は、AWS Sampleのコード修正が必要ですが、本ハンズオンでは動作するように CodeBuildのビルド定義 を修正してしまいましょう。</strong></li>
+</ol>
+<p><strong>CodeBuildのビルドプロジェクトからBuildProjectを選択します。</strong></p>
+<p class="image-container"><img style="width: 601.70px" src="img/da67f49c789a34c.png"></p>
+<p><strong>編集からBuildspecを選択します。</strong></p>
+<p class="image-container"><img style="width: 601.70px" src="img/f0ce6c0d749a6b69.png"></p>
+<p><strong>以下コードの1つ目をBuildProjectのビルドコマンドに貼り付けて更新して下さい。</strong></p>
+<p><strong>※コマンド中央に自分のAWSアカウントIDを入力する箇所があります</strong></p>
+<pre>{
+  &#34;version&#34;: &#34;0.2&#34;,
+  &#34;phases&#34;: {
+    &#34;install&#34;: {
+      &#34;runtime-versions&#34;: {
+        &#34;docker&#34;: 18
+      },
+      &#34;commands&#34;: [
+        &#34;echo &#39;f6bd1536a743ab170b35c94ed4c7c4479763356bd543af5d391122f4af852460  yq_linux_amd64&#39; &gt; yq_linux_amd64.sha&#34;,
+        &#34;wget https://github.com/mikefarah/yq/releases/download/3.4.0/yq_linux_amd64&#34;,
+        &#34;sha256sum -c yq_linux_amd64.sha&#34;,
+        &#34;mv yq_linux_amd64 /usr/bin/yq&#34;,
+        &#34;chmod +x /usr/bin/yq&#34;,
+        &#34;pip3 install --upgrade awscli&#34;,
+        &#34;aws --version&#34;
+      ]
+    },
+    &#34;pre_build&#34;: {
+      &#34;commands&#34;: [
+        &#34;cd $CODEBUILD_SRC_DIR&#34;,
+        &#34;$(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)&#34;,
+        &#34;echo &amp;#39;add your unit test command here&amp;#39;&#34;,
+      ]
+    },
+    &#34;build&#34;: {
+      &#34;commands&#34;: [
+        &#34;IMAGE_REPO_NAME=$repo_name&#34;,
+        &#34;IMAGE_TAG=$CODEBUILD_BUILD_NUMBER&#34;,
+        &#34;IMAGE_ID=自分のアカウントIDに置き換える.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG&#34;,
+        &#34;docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG -f Dockerfile .&#34;,
+        &#34;docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $IMAGE_ID;&#34;,
+        &#34;docker push $IMAGE_ID&#34;
+      ]
+    },
+    &#34;post_build&#34;: {
+      &#34;commands&#34;: [
+        &#34;aws proton --endpoint-url https://proton.$AWS_DEFAULT_REGION.amazonaws.com --region $AWS_DEFAULT_REGION get-service --name $service_name | jq -r .service.spec &gt; service.yaml&#34;,
+        &#34;yq w service.yaml &#39;instances[*].spec.image&#39; \&#34;$IMAGE_ID\&#34; &gt; rendered_service.yaml&#34;
+      ]
+    }
+  },
+  &#34;artifacts&#34;: {
+    &#34;files&#34;: [
+      &#34;rendered_service.yaml&#34;
+    ]
+  }
+}</pre>
+<p><strong>続けて同様の手順でDeploy1ProjectのBuildSpecを以下のように編集します。</strong></p>
+<pre>{
+  &#34;version&#34;: &#34;0.2&#34;,
+  &#34;phases&#34;: {
+      &#34;install&#34;: {
+      &#34;commands&#34;: [
+        &#34;pip3 install --upgrade awscli&#34;,
+        &#34;aws --version&#34;
+      ]
+    },
+    &#34;build&#34;: {
+      &#34;commands&#34;: [
+        &#34;aws proton --endpoint-url https://proton.$AWS_DEFAULT_REGION.amazonaws.com --region $AWS_DEFAULT_REGION update-service-instance --deployment-type CURRENT_VERSION --name $service_instance_name --service-name $service_name --spec file://rendered_service.yaml&#34;
+      ]
+    }
+  }
+}</pre>
+<p><strong>２つのビルドコマンドを編集後、CodePipelineの画面で変更をリリースするボタンをクリックし、再実行してください。</strong></p>
+<p class="image-container"><img style="width: 601.70px" src="img/5bd2d7caac24a522.png"></p>
+<ol type="1" start="18">
+<li><strong>アプリケーションがデプロイされていれば、ServiceEndpointにアクセスした結果、下記のページが表示されます。(表示されなかったらうまくデプロイできなかった原因調査を手伝いますのでチューターに声をかけてください)</strong></li>
+</ol>
+<p>※Proton のアイコンでなく、nginx の画面が表示された場合は、CodePipeline の実行がまだ完了していない状態。CodePipeline の実行が完了すれば Proton のアイコンが表示されるようになる。<br><br><img style="width: 601.70px" src="img/178a9800f757f49d.png"><br></p>
+<p>下記の画面の場合はCodePiplelineの実行状況を確認する</p>
+<p class="image-container"><img style="width: 601.70px" src="img/d3143d185d7cbdde.png"></p>
+<p>以下の場合はまだ実行中の為、完了を待つ事</p>
+<p class="image-container"><img style="width: 601.70px" src="img/91b4d8dfdbddafc5.png"></p>
+<h2 is-upgraded>アプリケーションのソースコードを変更し、継続デプロイを確認する</h2>
+<p>Protonから構成したサービスは、CodeBuild/CodePipelineによる継続的デプロイパイプラインが作成されています。継続的デプロイパイプラインの動作を確認するため、アプリケーションのソースコードを変更し、変更されたアプリケーションがデプロイされるか試してみましょう。</p>
+<ol type="1" start="1">
+<li><strong>GithubよりProtonのサンプルアプリケーションコードをforkしたリポジトリへアクセスします。リポジトリのファイル一覧より index.html を選択します。<br><br></strong><img style="width: 601.70px" src="img/a49b1bb1a0c6d8ba.png"><br></li>
+<li><strong>index.html の中身(HTMLコード)が表示されますので、下記スクリーンキャプチャを参考に編集アイコン(ペンアイコン)をクリックします。<br><br></strong><img style="width: 601.70px" src="img/70eaf14788f42c63.png"><br></li>
+<li><strong>編集モードの画面になりました。26行目にある AWS Proton を Handson2021 に変更して保存します。保存は、画面下部の「Commit changes」をクリックします。<br><br></strong><img style="width: 601.70px" src="img/d4a33dd3521b0dd4.png"><br><img style="width: 601.70px" src="img/291a379b71f7e776.png"><br></li>
+<li><strong>このコード変更に対し、CodeBuild/CodePipelineによる継続的デプロイパイプラインがどのように反応しているか見てみましょう。<br>(もし前述のCodeStar Connectionsの作業からタブを閉じてしまった場合はもう一度CodePipelineのコンソールを開いて) CodePiplineコンソールにある左のツリーより、「パイプライン」をクリックします。<br><br></strong>CodePipelineで構成されたパイプラインがリポジトリのコード変更を検知し、自動的にCodeBuildによるビルド＆デプロイ処理が実行されます。<br><img style="width: 601.70px" src="img/b2288316185fa1f4.png"><br></li>
+<li><strong>「Deploy名字instance-日付」(例：Deployyamaguchi-instance-20210611) が成功すればデプロイは完了です。<br>デプロイ処理は、ECSタスク定義の更新 -&gt; ECSクラスタ内のサービスへ新しいタスクの起動 -&gt; ALBのターゲットグループへタスクの付け替え -&gt; 既存タスクのConnection Draining -&gt; 既存タスクの終了などが行われています。<br><br></strong>終了まで8〜10分ほどかかります。「Deploy名字instance-日付」の成功表示を待たずとも、処理開始から3分ほどで実際に変更されたアプリケーションはデプロイされていますので、再びブラウザからServiceEndpointにアクセス(リロードでもOK)してみましょう。<br></li>
+<li><strong>ServiceEndpointにアクセス(リロードでもOK)して下記のページが表示されれば、変更されたアプリケーションがデプロイされています。<br><br></strong><img style="width: 601.70px" src="img/da39e1f7610b3d6a.png"><br></li>
+</ol>
+<p>以上でProtonを操作してアプリケーション実行環境を構成する手順は終了です。<br>インフラを意識せず、アプリケーション実行環境と継続的デプロイパイプラインが構成され、変更されたアプリケーションが継続的にデプロイされます。<br>これにより、開発チームがアプリケーション開発に集中できる環境を用意することができました。</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="片付け" duration="0">
+        <p>ハンズオン終了後は、下記の手順で環境を片付けましょう。</p>
+<ol type="1" start="1">
+<li>AWS Protonのサービスを選択し、対象を選択後、アクションから削除を実行する</li>
+</ol>
+<p>※削除まで少し時間が掛かります</p>
+<p class="image-container"><img style="width: 601.70px" src="img/6d69ea3ac4c88362.png"></p>
+<ol type="1" start="2">
+<li>サービス一覧から完全に削除された事を確認します</li>
+</ol>
+<p>※画面を切り替える事で以下の画面になります</p>
+<p class="image-container"><img style="width: 601.70px" src="img/664476b884556b59.png"></p>
+<ol type="1" start="3">
+<li>AWS Protonの環境を選択し、環境をアクションから削除する</li>
+</ol>
+<p>※削除まで少し時間が掛かります</p>
+<p class="image-container"><img style="width: 601.70px" src="img/6110b5ba194f9742.png"></p>
+<ol type="1" start="4">
+<li>AWS Protonの環境が全て削除されている事を確認する</li>
+</ol>
+<p class="image-container"><img style="width: 601.70px" src="img/2cc9b902d25630fb.png"></p>
+<ol type="1" start="5">
+<li>AWS Protonのサービステンプレートを選択し、削除を実施する</li>
+</ol>
+<p class="image-container"><img style="width: 601.70px" src="img/5f1b0568dd6b436.png"></p>
+<ol type="1" start="6">
+<li>AWS Protonの環境テンプレートを選択し、削除を実施する</li>
+</ol>
+<p class="image-container"><img style="width: 601.70px" src="img/6ff749a08a07e8bb.png"></p>
+<ol type="1" start="7">
+<li>S3のサービスを選択し、対象のバケットを空にしてから削除する</li>
+</ol>
+<p>対象バケットは以下の2種類 ※例</p>
+<p>・awsproton-yamaguchi-servi-pipelineartifactsbucket-159im6uyop51e</p>
+<p>・proton-cli-templates-495911196177</p>
+<p class="image-container"><img style="width: 601.70px" src="img/5665f9e22f66012.png"></p>
+<ol type="1" start="8">
+<li>Codepipelineのサービスを選択し、設定から接続を選択、接続を削除する</li>
+</ol>
+<p class="image-container"><img style="width: 601.70px" src="img/52f06fad624c838d.png"></p>
+<ol type="1" start="9">
+<li>Cloud9のサービスを選択し、対象のenviromentsを選択し、Deleteで削除を実施する</li>
+</ol>
+<p>※削除まで少し時間が掛かります</p>
+<p class="image-container"><img style="width: 601.70px" src="img/86f62ac13012d182.png"></p>
+<ol type="1" start="10">
+<li>Cloud9に付与したIAMロールを削除します</li>
+</ol>
+<ol type="1" start="11">
+<li>ProtonServiceRoleのIAMロールを削除します</li>
+</ol>
+<ol type="1" start="12">
+<li>Cloud9用に今回新規のVPCを作成した人はそちらも削除下さい</li>
+</ol>
+<p>※デフォルトVPCを利用していた場合は削除不要</p>
+<ol type="1" start="13">
+<li>これで今回のハンズオンで作成したリソースは全て削除されたはずです。</li>
+</ol>
+<p>皆様お疲れ様でした。</p>
+
+
+      </google-codelab-step>
+    
+  </google-codelab>
+
+  <script src="https://storage.googleapis.com/codelab-elements/native-shim.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/custom-elements.min.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/prettify.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/codelab-elements.js"></script>
+  <script src="//support.google.com/inapp/api.js"></script>
+
+</body>
+</html>
